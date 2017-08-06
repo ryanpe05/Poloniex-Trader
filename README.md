@@ -1,1 +1,4 @@
-I pushed the python code for now so that it'd at least be there if one of us opted to switch.
+If you're on a Debian/Ubuntu environment, you should be able to install all the given requirements by running install.sh.
+
+Build by running "scons" in the cpp folder
+
