@@ -40,6 +40,7 @@ if 'clang++' in env['CXX']:
     print('Using clang toolchain')
 
     env.Append(CXXFLAGS=['-std=c++11',
+                         '-pipe',
                          '-stdlib=libc++',
                          '-O2',
                          '-Wall',
@@ -58,16 +59,21 @@ elif 'g++' in env['CXX']:
     if GCC_VERSION < '4.3.0':
         raise Exception('GCC version {} detected with no or insufficient C++ 11 support detected'.format(GCC_VERSION))
 
-    env.Append(CXXFLAGS=['-std=c++11',
-                         '-O2',
+    env.Append(CXXFLAGS=['-L/usr/lib/arm-linux-gnueabihf','-lmysqlclient','-lpthread','-lz','-lm','-ldl','-I/usr/include/mysql','-DBIG_JOINS=1','-fno-strict-aliasing','-g','-DNDEBUG',
+                         '-lcrypto', '-lssl',
                          '-Wall',
+                         '-pipe',
+                         '-std=c++11','-O2',
                          '-pedantic',
                          '-Wno-deprecated-declarations',
                          '-Wno-unused-local-typedefs',
                          '-Wl,--no-as-needed',
                          '-pthread'])
 
-    env.Append(LINKFLAGS=['-pthread'])
+    env.Append(LINKFLAGS=[ '-L/usr/lib/arm-linux-gnueabihf','-lmysqlclient','-lpthread','-lz','-lm','-ldl','-I/usr/include/mysql','-DBIG_JOINS=1','-fno-strict-aliasing','-g','-DNDEBUG',
+                        '-lcrypto', '-lssl',
+                        '-pthread',                         
+                        ])
 
 else:
     raise Exception('Uups. The toolchain {} is new to me =('.format(env['CXX']))
@@ -78,11 +84,13 @@ env.Append(LIBPATH=['/usr/lib'])
 
 examples = [('main.cpp', [])]
 
+parameters = env.StaticLibrary('parameters', ['parameters.cpp'])
 
 prgs = []
 
 for e, extralibs in examples:
     prgs.append(env.Program(e, LIBS=[
+        parameters,
         'boost_thread',
         'boost_system',
         'boost_program_options',
