@@ -4,11 +4,11 @@
 
 #include <autobahn/autobahn.hpp>
 #include <boost/asio.hpp>	
+#include <autobahn/autobahn.hpp>
 #include <autobahn/wamp_websocketpp_websocket_transport.hpp>
 #include <websocketpp/config/asio_no_tls_client.hpp>
 #include <websocketpp/client.hpp>
 #include <boost/version.hpp>
-#include <list>
 #include <map>
 #include <thread>
 #include <mutex>
@@ -23,9 +23,7 @@
 using namespace std;
 
 
-
-typedef websocketpp::client<websocketpp::config::asio_client> client;
-//typedef autobahn::wamp_websocketpp_websocket_transport<websocketpp::config::asio_tls_client> websocket_transport;
+#include <websocketpp/config/asio_client.hpp>
 
 class market
 {
@@ -94,11 +92,11 @@ void add2(autobahn::wamp_invocation invocation)
 }
 
 
-void trade_event(autobahn::wamp_invocation invocation)
+void trade_event(const autobahn::wamp_event& event)
 {
 
 
-	string update = invocation->argument<std::string>(0);
+	string update = event.argument<std::string>(0);
 	if(update.size() > 75)
 	{
 	    bid bidevent(update);  
@@ -122,24 +120,29 @@ void ask_event(const autobahn::wamp_event& event)
 
 int market::market_connect()
 {
-	 std::cerr << "Boost: " << BOOST_VERSION << std::endl;
-    try {
-        //auto parameters = get_parameters(argc, argv);
+	typedef websocketpp::client<websocketpp::config::asio_tls_client> client;
+    typedef autobahn::wamp_websocketpp_websocket_transport<websocketpp::config::asio_tls_client> websocket_transport;
 
-       // std::cerr << "Connecting to realm: " << parameters->realm() << std::endl;
+    try {
+        //std::cerr << "Connecting to realm: " << parameters->realm() << std::endl;
 
         boost::asio::io_service io;
-        bool debug = true;
+        //bool debug = parameters->debug();
 
-        client ws_clinet;
-        ws_clinet.init_asio(&io);
-        auto transport = std::make_shared < autobahn::wamp_websocketpp_websocket_transport<websocketpp::config::asio_client> >(
-            ws_clinet, "wss://api.poloniex.com:443", debug);
+        client ws_client;
+        ws_client.init_asio(&io);
+        ws_client.set_tls_init_handler([&](websocketpp::connection_hdl) {
+            return websocketpp::lib::make_shared<boost::asio::ssl::context>(boost::asio::ssl::context::tlsv12_client);
+        });
+        auto transport = std::make_shared < autobahn::wamp_websocketpp_websocket_transport<websocketpp::config::asio_tls_client> >(
+                ws_client, "wss://api.poloniex.com:443", true);
 
-        
-        auto session = std::make_shared<autobahn::wamp_session>(io, debug);
+        //auto transport = std::make_shared<autobahn::wamp_tcp_transport>(
+        //        io, parameters->rawsocket_endpoint(),true);
 
-        // Create a thread to run the telemetry loop
+        // create a WAMP session that talks WAMP-RawSocket over TCP
+        auto session = std::make_shared<autobahn::wamp_session>(io, true);
+
         transport->attach(std::static_pointer_cast<autobahn::wamp_transport_handler>(session));
 
         // Make sure the continuation futures we use do not run out of scope prematurely.
@@ -150,13 +153,11 @@ int market::market_connect()
         boost::future<void> connect_future;
         boost::future<void> start_future;
         boost::future<void> join_future;
-        boost::future<void> provide_future;
-        cout << "starting it all" << endl;
+        boost::future<void> subscribe_future;
         connect_future = transport->connect().then([&](boost::future<void> connected) {
             try {
                 connected.get();
             } catch (const std::exception& e) {
-            	cout <<"Failed to connect" << endl;
                 std::cerr << e.what() << std::endl;
                 io.stop();
                 return;
@@ -168,7 +169,6 @@ int market::market_connect()
                 try {
                     started.get();
                 } catch (const std::exception& e) {
-                        	cout <<"Failed to start" << endl;
                     std::cerr << e.what() << std::endl;
                     io.stop();
                     return;
@@ -180,36 +180,39 @@ int market::market_connect()
                     try {
                         std::cerr << "joined realm: " << joined.get() << std::endl;
                     } catch (const std::exception& e) {
-                        	cout <<"Failed to rejoingister" << endl;
                         std::cerr << e.what() << std::endl;
                         io.stop();
                         return;
                     }
 
-                    provide_future = session->provide("USDT_ETH", &trade_event).then(
-                        [&](boost::future<autobahn::wamp_registration> registration) {
+                    subscribe_future = session->subscribe("USDT_ETH", &trade_event).then([&] (boost::future<autobahn::wamp_subscription> subscribed)
+                    {
                         try {
-                            std::cerr << "registered procedure:" << registration.get().id() << std::endl;
-                        } catch (const std::exception& e) {
-                        	cout <<"Failed to register" << endl;
+                            std::cerr << "subscribed to topic: " << subscribed.get().id() << std::endl;
+                        }
+                        catch (const std::exception& e) {
                             std::cerr << e.what() << std::endl;
                             io.stop();
                             return;
                         }
+
                     });
                 });
             });
         });
 
         std::cerr << "starting io service" << std::endl;
-
         io.run();
-
+        while(1){
+            cout<<"looping..."<<endl;
+            sleep(1);
+        }
         std::cerr << "stopped io service" << std::endl;
     }
-    catch (const std::exception& e) {
+    catch (std::exception& e) {
         std::cerr << "exception: " << e.what() << std::endl;
-        return -1;
+      
+		return -1;
     }
     return 1;
 }
