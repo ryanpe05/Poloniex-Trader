@@ -70,6 +70,7 @@ void market::setup()
 	while ( ( row=mysql_fetch_row(result)) != NULL )
 	{
 		cout << row << endl;
+     and hello Ryan
 	}	*/
 }
 
