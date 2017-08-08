@@ -136,7 +136,7 @@ int market::market_connect()
             return websocketpp::lib::make_shared<boost::asio::ssl::context>(boost::asio::ssl::context::tlsv12_client);
         });
         auto transport = std::make_shared < autobahn::wamp_websocketpp_websocket_transport<websocketpp::config::asio_tls_client> >(
-                ws_client, "wss://api.poloniex.com:443", true);
+                ws_client, "wss://api.poloniex.com", true);
 
         //auto transport = std::make_shared<autobahn::wamp_tcp_transport>(
         //        io, parameters->rawsocket_endpoint(),true);
@@ -204,15 +204,10 @@ int market::market_connect()
 
         std::cerr << "starting io service" << std::endl;
         io.run();
-        while(1){
-            cout<<"looping..."<<endl;
-            sleep(1);
-        }
         std::cerr << "stopped io service" << std::endl;
     }
     catch (std::exception& e) {
         std::cerr << "exception: " << e.what() << std::endl;
-      
 		return -1;
     }
     return 1;
