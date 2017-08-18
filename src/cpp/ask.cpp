@@ -1,22 +1,7 @@
 #ifndef ask_class
 #define ask_class
-#include <string>
-#include <stdlib.h>
-#include <time.h>
-#include "offer.cpp"
-using namespace std;
 
-class ask : public offer
-{
-	public:
-
-		ask(float a, float b, string c, time_t d) : offer(a, b, c, d) {}
-		ask(string);
-		ask() : offer() {}
-
-		ask load_sql(string);
-		void insert_sql(MYSQL *);
-};
+#include "ask.h"
 
 ask::ask(string call) 
 { 

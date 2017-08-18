@@ -43,8 +43,6 @@ if 'clang++' in env['CXX']:
                          '-pipe',
                          '-stdlib=libc++',
                          '-O2',
-                         '-Wall',
-                         '-pedantic',
                          '-Wno-unused-value',
                          '-Wno-deprecated',
                          '-pthread'])
@@ -61,16 +59,14 @@ elif 'g++' in env['CXX']:
 
     env.Append(CXXFLAGS=['-L/usr/lib/arm-linux-gnueabihf','-lmysqlclient','-lpthread','-lz','-lm','-ldl','-I/usr/include/mysql','-DBIG_JOINS=1','-fno-strict-aliasing','-g','-DNDEBUG',
                          '-lcrypto', '-lssl',
-                         '-Wall',
                          '-pipe',
                          '-std=c++11','-O2',
-                         '-pedantic',
                          '-Wno-deprecated-declarations',
                          '-Wno-unused-local-typedefs',
                          '-Wl,--no-as-needed',
                          '-pthread'])
 
-    env.Append(LINKFLAGS=[ '-L/usr/lib/arm-linux-gnueabihf','-lmysqlclient','-lpthread','-lz','-lm','-ldl','-I/usr/include/mysql','-DBIG_JOINS=1','-fno-strict-aliasing','-g','-DNDEBUG',
+    env.Append(LINKFLAGS=[ '-std=c++11','-L/usr/lib/arm-linux-gnueabihf','-lmysqlclient','-lpthread','-lz','-lm','-ldl','-I/usr/include/mysql','-DBIG_JOINS=1','-fno-strict-aliasing','-g','-DNDEBUG',
                         '-lcrypto', '-lssl',
                         '-pthread',                         
                         ])
@@ -82,16 +78,15 @@ else:
 env.Append(CPPPATH=['/usr/local/include'])
 env.Append(LIBPATH=['/usr/lib'])
 
-examples = [('main.cpp', [])]
+examples = (['main.cpp', 'offer.cpp', 'bid.cpp', 'ask.cpp', 'ticker.cpp', 'market.cpp', 'market.h'])
 
-parameters = env.StaticLibrary('parameters', ['parameters.cpp'])
+#parameters = env.StaticLibrary('parameters', ['parameters.cpp'])
 
 prgs = []
-
-for e, extralibs in examples:
-    prgs.append(env.Program(e, LIBS=[
-        parameters,
+prgs.append(env.Program(examples, LIBS=[
         'boost_thread',
         'boost_system',
         'boost_program_options',
-        'msgpackc'] + extralibs))
+        'msgpackc','crypto', 'ssl', 'mysqlclient']))
+
+

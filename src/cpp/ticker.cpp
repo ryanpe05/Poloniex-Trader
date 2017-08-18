@@ -5,7 +5,7 @@
 #include <time.h>
 using namespace std;
 
-class ticker()
+class ticker
 {
 	public:
 		string currency;
@@ -18,7 +18,7 @@ class ticker()
 		time_t date;
 
 		ticker(float, float, float, float, double, double, time_t);
-		ticker(string)
+		ticker(string);
 		ticker();
 
 		ticker load_sql(string);
@@ -33,36 +33,36 @@ ticker::ticker() :
 	last(0), lowest(0), highest(0), change(0), baseVol(0), quoteVol(0), date(0)
 	{ }
 
-ticker::ticker(string call) :
+ticker::ticker(string call)
 {
-	this.load_sql(call);	
+	this->load_sql(call);	
 }
 
-ticker ticker::load_sql(string call) :
+ticker ticker::load_sql(string call)
 {
 	call = call.substr(2);
-	this.currency = call.substr(0, call.find('\''));
+	this->currency = call.substr(0, call.find('\''));
 
 	call = call.substr(call.find('\'') + 1);
-	this.lowest = atof(call.substr(0, call.find('')));
+	this->lowest = atof(call.substr(0, call.find('\'')).c_str());
 
 	call = call.substr(call.find('\'') + 1);
-	this.highest = atof(call.substr(0, call.find('')));
+	this->highest = atof(call.substr(0, call.find('\'')).c_str());
 
 	call = call.substr(call.find('\'') + 1);
-	this.change = atof(call.substr(0, call.find('')));
+	this->change = atof(call.substr(0, call.find('\'')).c_str());
 
 	call = call.substr(call.find('\'') + 1);
-	this.baseVol = atof(call.substr(0, call.find('')));
+	this->baseVol = atof(call.substr(0, call.find('\'')).c_str());
 
 
 	call = call.substr(call.find('\'') + 1);
-	this.quoteVol = atof(call.substr(0, call.find('')));
+	this->quoteVol = atof(call.substr(0, call.find('\'')).c_str());
 
 	call = call.substr(call.find('\'') + 1);
-	this.date = atoi(call.substr(0, call.find('')));
+	this->date = atoi(call.substr(0, call.find('\'')).c_str());
 
-	return this;
+	return *this;
 }
 
 #endif
