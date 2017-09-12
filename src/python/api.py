@@ -32,7 +32,7 @@ class poloniex:
             return json.loads(ret.read())
         elif(command == "returnOrderBook"):
             ret = urllib.request.urlopen(urllib.request.Request('https://poloniex.com/public?command=' + command + '&currencyPair=' + str(req['currencyPair'])))
-            return json.loads(ret.read())
+            return json.loads(ret.read().decode('utf-8'))
         elif(command == "returnMarketTradeHistory"):
             ret = urllib.request.urlopen(urllib.request.Request('https://poloniex.com/public?command=' + "returnTradeHistory" + '&currencyPair=' + str(req['currencyPair'])))
             return json.loads(ret.read())

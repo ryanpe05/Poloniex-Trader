@@ -59,7 +59,13 @@ elif 'g++' in env['CXX']:
 
     env.Append(CXXFLAGS=['-L/usr/lib/arm-linux-gnueabihf','-lmysqlclient','-lpthread','-lz','-lm','-ldl','-I/usr/include/mysql','-DBIG_JOINS=1','-fno-strict-aliasing','-g','-DNDEBUG',
                          '-lcrypto', '-lssl',
-                         '-pipe',
+                         '-pipe','-lcppwamp',
+                        '-pthread',          
+                         '-DCPPWAMP_COMPILED_LIB',
+                         '-Icppwamp/cppwamp/include',
+                         '-Icppwamp/ext/boost',
+                         '-Icppwamp/ext/msgpack-c/include',
+                         '-Icppwamp/ext/rapidjson/include',
                          '-std=c++11','-O2',
                          '-Wno-deprecated-declarations',
                          '-Wno-unused-local-typedefs',
@@ -68,7 +74,14 @@ elif 'g++' in env['CXX']:
 
     env.Append(LINKFLAGS=[ '-std=c++11','-L/usr/lib/arm-linux-gnueabihf','-lmysqlclient','-lpthread','-lz','-lm','-ldl','-I/usr/include/mysql','-DBIG_JOINS=1','-fno-strict-aliasing','-g','-DNDEBUG',
                         '-lcrypto', '-lssl',
-                        '-pthread',                         
+                        '-pthread',                
+                         '-DCPPWAMP_COMPILED_LIB',
+                         '-Icppwamp/cppwamp/include',
+                         '-Icppwamp/ext/boost',
+                         '-Icppwamp/ext/msgpack-c/include',
+                         '-Icppwamp/ext/rapidjson/include',
+                        '-Lcppwamp/build/cppwamp',
+                        '-Lcppwamp/ext/boost/stage/lib',         
                         ])
 
 else:
@@ -86,7 +99,10 @@ prgs = []
 prgs.append(env.Program(examples, LIBS=[
         'boost_thread',
         'boost_system',
+        'boost_coroutine',
         'boost_program_options',
+        'boost_system',
+        'cppwamp',
         'msgpackc','crypto', 'ssl', 'mysqlclient']))
 
 

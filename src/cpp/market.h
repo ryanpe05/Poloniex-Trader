@@ -2,22 +2,21 @@
 #define market_h
 
 
-#include <autobahn/autobahn.hpp>
-#include <boost/asio.hpp>	
-#include <autobahn/autobahn.hpp>
-#include <autobahn/wamp_websocketpp_websocket_transport.hpp>
-#include <websocketpp/config/asio_no_tls_client.hpp>
-#include <websocketpp/client.hpp>
-#include <boost/version.hpp>
+#include <ctime>
+#include <iostream>
+
+#include "wampcc/wampcc.h"
+
+
+
 #include <map>
 #include <thread>
 #include <mutex>
 #include <iostream>
 #include <memory>
 #include <tuple>
+#include <list>
 #include <mysql/mysql.h>
-#include <websocketpp/config/asio_client.hpp>
-#include "parameters.hpp"
 #include "bid.h"
 #include "ask.h"
 
@@ -39,6 +38,10 @@ class market
 		MYSQL_RES *result;
 		MYSQL_ROW row;
 		MYSQL *sqlconnection, mysql;
+		
+		const std::string realm = "cppwamp.demo.time";
+		const std::string address = "localhost";
+		const short port = 12345;
 
 		static market & instance();
 

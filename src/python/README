@@ -1,0 +1,6 @@
+Run with python3 
+use pip3 or whatever to install:
+urllib
+pymysql
+
+and whatever else it gives you an error for
