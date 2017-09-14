@@ -49,8 +49,9 @@ def main():
 			cursor.execute(sql)
 			result = cursor.fetchall()
 			for i in result:
-				OrderBook[i[3]][i[0]] = trade_class.trades(i[0],i[1],i[2],i[3],i[4],i[5])
-			sql = "INSERT INTO trades (amount, rate, type, creationdate) VALUES "#(%f, %f, %s, %s)
+				print(i)
+				OrderBook[i[3]][i[0]] = trade_class.trades(i[0],i[1],i[2],i[3],i[4],False)
+			sql = "INSERT INTO trades (amount, rate, type, date) VALUES "#(%f, %f, %s, %s)
 				
 			while True :
 				print("begin")
@@ -104,12 +105,12 @@ def main():
 					OrderBook["asks"][newid] = trade_class.trades(newid, i[1], i[0], "bids", timestamp, 0)
 				print("commit")
 				connection.commit()
-				"""	data = sql + "("+ str(i[1]) + ", " + str(i[0]) + ", 'USDT_ETH', '" + timestamp +"');"
-					print(data)
-					cursor.execute(data)
-				connection.commit()
-				quit()
-				"""
+				# """	data = sql + "("+ str(i[1]) + ", " + str(i[0]) + ", 'USDT_ETH', '" + timestamp +"');"
+				# 	print(data)
+				# 	cursor.execute(data)
+				# connection.commit()
+				# quit()
+				# """
 	finally:
 		connection.close()
 main()
