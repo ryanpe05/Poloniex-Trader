@@ -29,17 +29,17 @@ class poloniex:
 
         if(command == "returnTicker" or command == "return24Volume"):
             ret = urllib.request.urlopen(urllib.request.Request('https://poloniex.com/public?command=' + command))
-            return json.loads(ret.read())
+            return json.loads(ret.read().decode('utf-8'))
         elif(command == "returnOrderBook"):
             ret = urllib.request.urlopen(urllib.request.Request('https://poloniex.com/public?command=' + command + '&currencyPair=' + str(req['currencyPair'])))
             return json.loads(ret.read().decode('utf-8'))
         elif(command == "returnMarketTradeHistory"):
             ret = urllib.request.urlopen(urllib.request.Request('https://poloniex.com/public?command=' + "returnTradeHistory" + '&currencyPair=' + str(req['currencyPair'])))
-            return json.loads(ret.read())
+            return json.loads(ret.read().decode('utf-8'))
         else:
             req['command'] = command
             req['nonce'] = int(time.time()*1000)
-            post_data = urllib.urlencode(req)
+            post_data = urllib.parse.urlencode(req)
 
             sign = hmac.new(self.Secret, post_data, hashlib.sha512).hexdigest()
             headers = {
