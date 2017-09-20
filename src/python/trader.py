@@ -21,6 +21,7 @@ connection = pymysql.connect(host='localhost',
 OrdersLock = multiprocessing.Lock()
 SMA50Lock = multiprocessing.Lock()
 SMA200Lock = multiprocessing.Lock()
+StdDevLock = multiprocessing.Lock() # why are these here and in main?
 currency = {}
 currency["currencyPair"] = "USDT_ETH" #The API likes this format
 
@@ -30,7 +31,7 @@ Calculates a 50 and 200 day Simple moving average.
 Loops forever
 Both parameters must be type manager.Value('d', 0.0)
 """
-def SMA(SMA50, SMA200, EMA9, MACD):
+def SMA(SMA50, SMA200, StdDev, EMA9, MACD):
 	p = api.poloniex("A", "B") #Gonna have to populate this with a APIkey in pass eventually
 	top_tick_events = []
 	bottom_tick_events = []
@@ -41,30 +42,34 @@ def SMA(SMA50, SMA200, EMA9, MACD):
 			#This sits in the "history.json" file
 			#load up old trades
 
-			"""start = time.time()
-			data  = {}
-			with open('history.json', 'r') as fp:
-				data = json.load(fp)
-			print ("Done reading")
-			for k in data:	#																															quoteVol, 							high24, 			baseVol,					 low24, 						HighBid, 					last, 					lowestAsk,			percentChange, 		type, date)								
-				ts = int(k["date"])
-				timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-				cursor.execute("INSERT INTO ticker (quoteVol, high24, baseVol, low24, HighBid, last, lowestAsk, percentChange, type, date) VALUES  (" + str(k["quoteVolume"]) + ", " + str(k["high"]) + ','  + str(k["volume"]) + ',' + str(k["quoteVolume"]) + ','  + str(k["low"]) + ','  + str(k["weightedAverage"])  + ','+ str(k["low"])  + ',' + "0" + ','  +"'all'"+  ",'"+timestamp +"')")
+			# """start = time.time()
+			# data  = {}
+			# with open('history.json', 'r') as fp:
+			# 	data = json.load(fp)
+			# print ("Done reading")
+			# for k in data:	#																															quoteVol, 							high24, 			baseVol,					 low24, 						HighBid, 					last, 					lowestAsk,			percentChange, 		type, date)								
+			# 	ts = int(k["date"])
+			# 	timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+			# 	cursor.execute("INSERT INTO ticker (quoteVol, high24, baseVol, low24, HighBid, last, lowestAsk, percentChange, type, date) VALUES  (" + str(k["quoteVolume"]) + ", " + str(k["high"]) + ','  + str(k["volume"]) + ',' + str(k["quoteVolume"]) + ','  + str(k["low"]) + ','  + str(k["weightedAverage"])  + ','+ str(k["low"])  + ',' + "0" + ','  +"'all'"+  ",'"+timestamp +"')")
 
-			print("done in " + str(time.time() - start))
-			connection.commit()
-			quit()
-			"""
+			# print("done in " + str(time.time() - start))
+			# connection.commit()
+			# quit()
+			# """
 			cursor.execute("Select last from ticker  WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
 			bottom_tick_events200 = deque(cursor.fetchall())
+			stdDevNum = 0.0
 			for i in bottom_tick_events200:
 				SMA200.value += i[0]
 			SMA200.value /= len(bottom_tick_events200) #Average that shit
-			cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 50 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
+			cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 50 DAY ) ORDER BY date ASC;") #Pull the last 50 days from DB
 			bottom_tick_events50 = deque(cursor.fetchall())
 			for i in bottom_tick_events50:
 				SMA50.value += i[0] #repeate
 			SMA50.value /= len(bottom_tick_events50)
+			for i in bottom_tick_events50:
+				stdDevNum += (i[0]-SMA50.value)**2 # rerun the loop to get standard deviations
+			StdDev.value = (stdDevNum/(len(bottom_tick_events50)))**(1/2)
 			lenSMA50= len(bottom_tick_events50) #see how many events that took for each
 			lenSMA200= len(bottom_tick_events200)
 
@@ -107,22 +112,27 @@ def SMA(SMA50, SMA200, EMA9, MACD):
 
 			macdlist = []
 			while True : #And repeat forever
+				print("calculation loop")
 				time.sleep(3) #The number changes pretty slowly, and even 3 seconds produces a lot of duplicates
-
+				liveDev = ((StdDev.value)**2)*lenSMA50 #this number is useful for live standard deviation calculations
 				ts = time.time()
 				timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S') #Convert to date-time
 				query  = p.api_query("returnTicker") #Run the ticker event
 				query = query[currency["currencyPair"]] #We only care about the current trading value, "USDT_ETH"
 				top_tick_events += [trade_class.ticker(query, timestamp, currency["currencyPair"])] #Add it to a list of the past ticker events
+				oldAve = SMA50.value
 				SMA50.value += (float(query["last"]) - bottom_tick_events50.popleft()[0]) / lenSMA50 #SMA that shit
 				SMA200.value += (float(query["last"]) - bottom_tick_events200.popleft()[0]) / lenSMA200
+
 				EMA12 = (alpha12 * float(query["last"])) + (1 - alpha12) * EMA12
 				EMA26 = (alpha26 * float(query["last"])) + (1 - alpha26) * EMA26
 				
 				MACD.value = EMA12 - EMA26
 				EMA9.value = (alpha9 * MACD.value) + (1 - alpha9) * EMA9.value
 				macdlist += [trade_class.MACD(MACD.value, EMA9.value, timestamp, currency["currencyPair"])]
-
+				liveDev -= (bottom_tick_events50.popleft()[0]-SMA50.value)*(bottom_tick_events50.popleft()[0] - oldAve)
+				liveDev += (float(query["last"])-SMA50.value)*(float(query["last"]) - oldAve)
+				StdDev.value = (liveDev/lenSMA50)**(1/2)
 				if len(top_tick_events) == 100: #When that list of events gets to 100, flush it and send it to MYSQL
 
 					cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC LIMIT 100") #Check my logic on this
@@ -228,12 +238,12 @@ def TrackandInsertOpenOrders():
 		connection.close()
 
 
-"""
-Get the current Orderbook of bids and asks
-OpenOrders must be a manager.dict()
-e is a multiprocessing.Event()
-Cycling every half second for no good reason
-"""
+# """
+# Get the current Orderbook of bids and asks
+# OpenOrders must be a manager.dict()
+# e is a multiprocessing.Event()
+# Cycling every half second for no good reason
+# """
 def getOpenBook(OpenOrders, e):
 	e.clear()
 	print("Openbook Started")
@@ -247,11 +257,12 @@ def getOpenBook(OpenOrders, e):
 		time.sleep(0.5)
 
 #init some shit
-def init(O, S5, S2):
+def init(O, S5, S2, SD):
 	global OrdersLock, SMA50Lock, SMA200Lock
 	OrdersLock = O
 	SMA50Lock = S5
 	SMA200Lock = S2
+	StdDevLock = SD
 
 def main():
 	manager = multiprocessing.Manager() #This sets up a server that controls processing events
@@ -260,27 +271,33 @@ def main():
 	OrdersLock = multiprocessing.Lock()
 	SMA50Lock = multiprocessing.Lock()
 	SMA200Lock = multiprocessing.Lock()
-	pool = multiprocessing.Pool(initializer=init, initargs=(OrdersLock, SMA50Lock, SMA200Lock)) #Run the init function
+	StdDevLock = multiprocessing.Lock()
+	pool = multiprocessing.Pool(initializer=init, initargs=(OrdersLock, SMA50Lock, SMA200Lock, StdDevLock)) #Run the init function
 	print("Setting up")
 	SMA50 = manager.Value('d', 0.0)
 	SMA200 = manager.Value('d', 0.0)
 	MACD = manager.Value('d', 0.0)
 	EMA9 = manager.Value('d', 0.0)
-
+	StdDev = manager.Value('d', 0.0)
 	OpenOrders = manager.dict()
 	print("Spawning processes")
 	OpenbookProcess = multiprocessing.Process(target=getOpenBook, args=(OpenOrders, e)) #Spawn some new processes
 	OpenbookProcess.start()
-	SMAProcess = multiprocessing.Process(target=SMA, args=(SMA50, SMA200, EMA9, MACD))
+	SMAProcess = multiprocessing.Process(target=SMA, args=(SMA50, SMA200, StdDev, EMA9, MACD))
 	SMAProcess.start()
 	print("Looping")
 	while True:
-		print("Main loop")
+		print("Main loop\n")
 		time.sleep(0.75)
 		e.wait() #Wait until a new orderbook is pulled
 
 		for i in OpenOrders['bids']:
-			if SMA200.value < float(i[0]):
+			if SMA50.value < float(i[0]):
 				pass
-			#	print(i[0], ": bid detected greater than 50 day average: ", SMA200.value)
+				#print(i[0], ": bid detected greater than 50 day average: ", SMA50.value)
+		print("SMA50", SMA50.value)
+		print("SMA200", SMA200.value)
+		print("MACD", MACD.value)
+		print("EMA9", EMA9.value)
+		print("StdDev", StdDev.value)
 main()
