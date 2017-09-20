@@ -31,7 +31,8 @@ Calculates a 50 and 200 day Simple moving average.
 Loops forever
 Both parameters must be type manager.Value('d', 0.0)
 """
-def SMA(SMA50, SMA200, StdDev, EMA9, MACD):
+def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
+	waitEvent.clear()
 	p = api.poloniex("A", "B") #Gonna have to populate this with a APIkey in pass eventually
 	top_tick_events = []
 	bottom_tick_events = []
@@ -56,6 +57,7 @@ def SMA(SMA50, SMA200, StdDev, EMA9, MACD):
 			# connection.commit()
 			# quit()
 			# """
+			print("Pulling old data from DB and calculating averages")
 			cursor.execute("Select last from ticker  WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
 			bottom_tick_events200 = deque(cursor.fetchall())
 			stdDevNum = 0.0
@@ -82,7 +84,6 @@ def SMA(SMA50, SMA200, StdDev, EMA9, MACD):
 			#cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 9 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
 			#bottom_tick_eventsEMA9 = deque(cursor.fetchall())
 			
-			print("POP LEFT", bottom_tick_eventsEMA26.popleft()[1])
 			EMA26 = bottom_tick_eventsEMA26.popleft()[0]
 			EMA12 = bottom_tick_eventsEMA12.popleft()[0]
 			#EMA9.value = bottom_tick_eventsEMA9.popleft()[0]
@@ -104,6 +105,7 @@ def SMA(SMA50, SMA200, StdDev, EMA9, MACD):
 				EMA9.value = (alpha9 * i.MACDVal) + (1 - alpha9) * EMA9.value
 				i.EMA9 = EMA9.value
 
+			MACD.value = macdlist[-1].MACDVal
 			for i in macdlist:
 				cursor.execute("Select macd from macd WHERE time = '" + str(i.time) +"'" ) #Check my logic on this
 				if len(cursor.fetchall()) == 0: #Get the last 100 events. We cycle in 100 for the SMA math, and cycle out 1 event each iteration
@@ -111,13 +113,20 @@ def SMA(SMA50, SMA200, StdDev, EMA9, MACD):
 			connection.commit()
 
 			macdlist = []
+			waitEvent.set()
 			while True : #And repeat forever
 				print("calculation loop")
 				time.sleep(3) #The number changes pretty slowly, and even 3 seconds produces a lot of duplicates
 				liveDev = ((StdDev.value)**2)*lenSMA50 #this number is useful for live standard deviation calculations
 				ts = time.time()
 				timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S') #Convert to date-time
-				query  = p.api_query("returnTicker") #Run the ticker event
+				try:
+					query  = p.api_query("returnTicker") #Run the ticker event
+
+				except:
+					print("A stupid exception occured")
+					continue
+
 				query = query[currency["currencyPair"]] #We only care about the current trading value, "USDT_ETH"
 				top_tick_events += [trade_class.ticker(query, timestamp, currency["currencyPair"])] #Add it to a list of the past ticker events
 				oldAve = SMA50.value
@@ -267,6 +276,7 @@ def init(O, S5, S2, SD):
 def main():
 	manager = multiprocessing.Manager() #This sets up a server that controls processing events
 	e = multiprocessing.Event()
+	waitEvent = multiprocessing.Event()
 
 	OrdersLock = multiprocessing.Lock()
 	SMA50Lock = multiprocessing.Lock()
@@ -283,13 +293,15 @@ def main():
 	print("Spawning processes")
 	OpenbookProcess = multiprocessing.Process(target=getOpenBook, args=(OpenOrders, e)) #Spawn some new processes
 	OpenbookProcess.start()
-	SMAProcess = multiprocessing.Process(target=SMA, args=(SMA50, SMA200, StdDev, EMA9, MACD))
+	SMAProcess = multiprocessing.Process(target=SMA, args=(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD))
 	SMAProcess.start()
+	waitEvent.wait() #Wait until a SMA is finished setting up
+
 	print("Looping")
 	while True:
 		print("Main loop\n")
 		time.sleep(0.75)
-		e.wait() #Wait until a new orderbook is pulled
+		
 
 		for i in OpenOrders['bids']:
 			if SMA50.value < float(i[0]):
