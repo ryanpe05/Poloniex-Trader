@@ -68,3 +68,18 @@ class ticker:
 			 str(self.HighBid) +", " + str(self.last) +", " + str(self.lowestAsk) +", " + str(self.percentChange) + ", " \
 			  + str(0) + ", '" + self.time + "');")
 
+
+class MACD:
+	MACDVal = 0
+	EMA9 = 0
+	time = 0
+	curtype = ""
+
+	def __init__(self, MACDVal, EMA9, time, curtype):
+		self.MACDVal = MACDVal
+		self.EMA9 = EMA9
+		self.time = time
+		self.curtype = curtype
+
+	def insert_sql(self):
+		return str("INSERT INTO macd (macd, ema9, time, type) VALUES (" + str(self.MACDVal) + "," + str(self.EMA9) + ", '" + str(self.time) + "' , '" + str(self.curtype) + "');")

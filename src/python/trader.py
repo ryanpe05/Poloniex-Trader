@@ -30,8 +30,8 @@ Calculates a 50 and 200 day Simple moving average.
 Loops forever
 Both parameters must be type manager.Value('d', 0.0)
 """
-def SMA(SMA50, SMA200):
-	p = api.poloniex("A", "B")
+def SMA(SMA50, SMA200, EMA9, MACD):
+	p = api.poloniex("A", "B") #Gonna have to populate this with a APIkey in pass eventually
 	top_tick_events = []
 	bottom_tick_events = []
 	try:
@@ -55,12 +55,12 @@ def SMA(SMA50, SMA200):
 			connection.commit()
 			quit()
 			"""
-			cursor.execute("Select last from ticker  WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date DESC;") #Pull the last 200 days from DB
+			cursor.execute("Select last from ticker  WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
 			bottom_tick_events200 = deque(cursor.fetchall())
 			for i in bottom_tick_events200:
 				SMA200.value += i[0]
 			SMA200.value /= len(bottom_tick_events200) #Average that shit
-			cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 50 DAY ) ORDER BY date DESC;") #Pull the last 200 days from DB
+			cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 50 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
 			bottom_tick_events50 = deque(cursor.fetchall())
 			for i in bottom_tick_events50:
 				SMA50.value += i[0] #repeate
@@ -68,7 +68,44 @@ def SMA(SMA50, SMA200):
 			lenSMA50= len(bottom_tick_events50) #see how many events that took for each
 			lenSMA200= len(bottom_tick_events200)
 
+			cursor.execute("Select last,date from ticker WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
+			bottom_tick_eventsEMA26 = deque(cursor.fetchall())
+			
+			cursor.execute("Select last,date from ticker WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
+			bottom_tick_eventsEMA12 = deque(cursor.fetchall())
+			
+			#cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 9 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
+			#bottom_tick_eventsEMA9 = deque(cursor.fetchall())
+			
+			print("POP LEFT", bottom_tick_eventsEMA26.popleft()[1])
+			EMA26 = bottom_tick_eventsEMA26.popleft()[0]
+			EMA12 = bottom_tick_eventsEMA12.popleft()[0]
+			#EMA9.value = bottom_tick_eventsEMA9.popleft()[0]
 
+			macdlist = []
+
+			alpha26 = 2.0 / (26 + 1)
+			alpha12 = 2.0 / (12 + 1)
+			alpha9 = 2.0 / (9 + 1)
+			print(alpha26, alpha12, alpha9)
+			while len(bottom_tick_eventsEMA26) > 0:
+				val = bottom_tick_eventsEMA26.popleft()
+				EMA26 = (alpha26 * val[0]) + (1 - alpha26) * EMA26
+				EMA12 = (alpha12 * val[0]) + (1 - alpha12) * EMA12
+				macdlist += [trade_class.MACD(EMA12 - EMA26,0, val[1], currency["currencyPair"])]
+
+			EMA9.value = macdlist[0].MACDVal
+			for i in macdlist:
+				EMA9.value = (alpha9 * i.MACDVal) + (1 - alpha9) * EMA9.value
+				i.EMA9 = EMA9.value
+
+			for i in macdlist:
+				cursor.execute("Select macd from macd WHERE time = '" + str(i.time) +"'" ) #Check my logic on this
+				if len(cursor.fetchall()) == 0: #Get the last 100 events. We cycle in 100 for the SMA math, and cycle out 1 event each iteration
+					cursor.execute(i.insert_sql())
+			connection.commit()
+
+			macdlist = []
 			while True : #And repeat forever
 				time.sleep(3) #The number changes pretty slowly, and even 3 seconds produces a lot of duplicates
 
@@ -79,19 +116,29 @@ def SMA(SMA50, SMA200):
 				top_tick_events += [trade_class.ticker(query, timestamp, currency["currencyPair"])] #Add it to a list of the past ticker events
 				SMA50.value += (float(query["last"]) - bottom_tick_events50.popleft()[0]) / lenSMA50 #SMA that shit
 				SMA200.value += (float(query["last"]) - bottom_tick_events200.popleft()[0]) / lenSMA200
+				EMA12 = (alpha12 * float(query["last"])) + (1 - alpha12) * EMA12
+				EMA26 = (alpha26 * float(query["last"])) + (1 - alpha26) * EMA26
+				
+				MACD.value = EMA12 - EMA26
+				EMA9.value = (alpha9 * MACD.value) + (1 - alpha9) * EMA9.value
+				macdlist += [trade_class.MACD(MACD.value, EMA9.value, timestamp, currency["currencyPair"])]
 
 				if len(top_tick_events) == 100: #When that list of events gets to 100, flush it and send it to MYSQL
 
-					cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date DESC LIMIT 100") #Check my logic on this
+					cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC LIMIT 100") #Check my logic on this
 					bottom_tick_events200 = deque(cursor.fetchall()) #Get the last 100 events. We cycle in 100 for the SMA math, and cycle out 1 event each iteration
 																	# I think it'll work when we have a more consistent data set
-					cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 50 DAY ) ORDER BY date DESC LIMIT 100")
+					cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 50 DAY ) ORDER BY date ASC LIMIT 100")
 					bottom_tick_events50 = deque(cursor.fetchall())
 
 					print("Flushing to database") #write it all to sql
 					for i in top_tick_events:
 						cursor.execute(i.insert_sql());
-						connection.commit()
+					for i in macdlist:
+						cursor.execute(i.insert_sql())
+				
+					connection.commit()
+					macdlist = []
 					top_tick_events = []
 		
 	finally:
@@ -217,12 +264,14 @@ def main():
 	print("Setting up")
 	SMA50 = manager.Value('d', 0.0)
 	SMA200 = manager.Value('d', 0.0)
+	MACD = manager.Value('d', 0.0)
+	EMA9 = manager.Value('d', 0.0)
 
 	OpenOrders = manager.dict()
 	print("Spawning processes")
 	OpenbookProcess = multiprocessing.Process(target=getOpenBook, args=(OpenOrders, e)) #Spawn some new processes
 	OpenbookProcess.start()
-	SMAProcess = multiprocessing.Process(target=SMA, args=(SMA50, SMA200))
+	SMAProcess = multiprocessing.Process(target=SMA, args=(SMA50, SMA200, EMA9, MACD))
 	SMAProcess.start()
 	print("Looping")
 	while True:
@@ -232,5 +281,6 @@ def main():
 
 		for i in OpenOrders['bids']:
 			if SMA200.value < float(i[0]):
-				print(i[0], ": bid detected greater than 50 day average: ", SMA200.value)
+				pass
+			#	print(i[0], ": bid detected greater than 50 day average: ", SMA200.value)
 main()
