@@ -48,7 +48,7 @@ def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
 			# with open('history.json', 'r') as fp:
 			# 	data = json.load(fp)
 			# print ("Done reading")
-			# for k in data:	#																															quoteVol, 							high24, 			baseVol,					 low24, 						HighBid, 					last, 					lowestAsk,			percentChange, 		type, date)								
+			# for k in data:	#					quoteVol, 							high24, 		baseVol,					 low24, 					HighBid, 					last, 					lowestAsk,			percentChange, 		type, date)			
 			# 	ts = int(k["date"])
 			# 	timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
 			# 	cursor.execute("INSERT INTO ticker (quoteVol, high24, baseVol, low24, HighBid, last, lowestAsk, percentChange, type, date) VALUES  (" + str(k["quoteVolume"]) + ", " + str(k["high"]) + ','  + str(k["volume"]) + ',' + str(k["quoteVolume"]) + ','  + str(k["low"]) + ','  + str(k["weightedAverage"])  + ','+ str(k["low"])  + ',' + "0" + ','  +"'all'"+  ",'"+timestamp +"')")
@@ -74,18 +74,17 @@ def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
 			StdDev.value = (stdDevNum/(len(bottom_tick_events50)))**(1/2)
 			lenSMA50= len(bottom_tick_events50) #see how many events that took for each
 			lenSMA200= len(bottom_tick_events200)
-
-			cursor.execute("Select last,date from ticker WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
+	
+			print("Done with SMA 200 and 50")
+			cursor.execute("Select last,date from ticker WHERE date >= ( CURDATE() - INTERVAL 26 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
 			bottom_tick_eventsEMA26 = deque(cursor.fetchall())
 			
-			cursor.execute("Select last,date from ticker WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
-			bottom_tick_eventsEMA12 = deque(cursor.fetchall())
 			
 			#cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 9 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
 			#bottom_tick_eventsEMA9 = deque(cursor.fetchall())
 			
 			EMA26 = bottom_tick_eventsEMA26.popleft()[0]
-			EMA12 = bottom_tick_eventsEMA12.popleft()[0]
+			EMA12 = EMA26
 			#EMA9.value = bottom_tick_eventsEMA9.popleft()[0]
 
 			macdlist = []
@@ -93,7 +92,7 @@ def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
 			alpha26 = 2.0 / (26 + 1)
 			alpha12 = 2.0 / (12 + 1)
 			alpha9 = 2.0 / (9 + 1)
-			print(alpha26, alpha12, alpha9)
+			print("Calculating EMAs")
 			while len(bottom_tick_eventsEMA26) > 0:
 				val = bottom_tick_eventsEMA26.popleft()
 				EMA26 = (alpha26 * val[0]) + (1 - alpha26) * EMA26
@@ -104,16 +103,21 @@ def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
 			for i in macdlist:
 				EMA9.value = (alpha9 * i.MACDVal) + (1 - alpha9) * EMA9.value
 				i.EMA9 = EMA9.value
-
+			
+			"""
+			Uncomment this section if you haven't run any MACDs on your db yet, 
+			and you fear you are missing values
 			MACD.value = macdlist[-1].MACDVal
 			for i in macdlist:
 				cursor.execute("Select macd from macd WHERE time = '" + str(i.time) +"'" ) #Check my logic on this
 				if len(cursor.fetchall()) == 0: #Get the last 100 events. We cycle in 100 for the SMA math, and cycle out 1 event each iteration
 					cursor.execute(i.insert_sql())
 			connection.commit()
-
+			"""
+			macdlist_back = macdlist[-100:]
 			macdlist = []
-			waitEvent.set()
+			print("Done setting up")
+			waitEvent.set()	
 			while True : #And repeat forever
 				print("calculation loop")
 				time.sleep(3) #The number changes pretty slowly, and even 3 seconds produces a lot of duplicates
@@ -142,11 +146,12 @@ def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
 				liveDev -= (bottom_tick_events50.popleft()[0]-SMA50.value)*(bottom_tick_events50.popleft()[0] - oldAve)
 				liveDev += (float(query["last"])-SMA50.value)*(float(query["last"]) - oldAve)
 				StdDev.value = (liveDev/lenSMA50)**(1/2)
-				if len(top_tick_events) == 100: #When that list of events gets to 100, flush it and send it to MYSQL
 
+				tradeAnalyze(macdlist_back[len(macdlist):] + macdlist)
+				if len(top_tick_events) == 50: #When that list of events gets to 100, flush it and send it to MYSQL
 					cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC LIMIT 100") #Check my logic on this
 					bottom_tick_events200 = deque(cursor.fetchall()) #Get the last 100 events. We cycle in 100 for the SMA math, and cycle out 1 event each iteration
-																	# I think it'll work when we have a more consistent data set
+											# I think it'll work when we have a more consistent data set
 					cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 50 DAY ) ORDER BY date ASC LIMIT 100")
 					bottom_tick_events50 = deque(cursor.fetchall())
 
@@ -157,6 +162,7 @@ def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
 						cursor.execute(i.insert_sql())
 				
 					connection.commit()
+					macdlist_back = macdlist[:]
 					macdlist = []
 					top_tick_events = []
 		
@@ -292,10 +298,10 @@ def main():
 	OpenOrders = manager.dict()
 	print("Spawning processes")
 	OpenbookProcess = multiprocessing.Process(target=getOpenBook, args=(OpenOrders, e)) #Spawn some new processes
-	OpenbookProcess.start()
 	SMAProcess = multiprocessing.Process(target=SMA, args=(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD))
 	SMAProcess.start()
 	waitEvent.wait() #Wait until a SMA is finished setting up
+	OpenbookProcess.start()
 
 	print("Looping")
 	while True:
