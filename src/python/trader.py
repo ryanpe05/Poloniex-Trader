@@ -19,6 +19,7 @@ connection = pymysql.connect(host='localhost',
 							 db='crypto')
 
 OrdersLock = multiprocessing.Lock()
+SMA1Lock = multiprocessing.Lock()
 SMA50Lock = multiprocessing.Lock()
 SMA200Lock = multiprocessing.Lock()
 StdDevLock = multiprocessing.Lock() # why are these here and in main?
@@ -26,16 +27,16 @@ currency = {}
 currency["currencyPair"] = "USDT_ETH" #The API likes this format
 
 
-"""
-Calculates a 50 and 200 day Simple moving average.
-Loops forever
-Both parameters must be type manager.Value('d', 0.0)
-"""
-def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
+# """
+# Calculates a 50 and 200 day Simple moving average.
+# Loops forever
+# Both parameters must be type manager.Value('d', 0.0)
+# """
+def SMA(waitEvent, SMA1, SMA50, SMA200, StdDev, EMA9, MACD):
 	waitEvent.clear()
 	p = api.poloniex("A", "B") #Gonna have to populate this with a APIkey in pass eventually
 	top_tick_events = []
-	bottom_tick_events = []
+	#bottom_tick_events = []
 	try:
 		with connection.cursor() as cursor:
 
@@ -58,6 +59,11 @@ def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
 			# quit()
 			# """
 			print("Pulling old data from DB and calculating averages")
+			cursor.execute("Select last from ticker  WHERE date >= ( CURDATE() - INTERVAL 2 DAY ) ORDER BY date ASC;") #Pull the last day from DB
+			bottom_tick_events = deque(cursor.fetchall())
+			for i in bottom_tick_events:
+				SMA1.value += i[0]
+			SMA1.value /= len(bottom_tick_events) #Average that shit
 			cursor.execute("Select last from ticker  WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
 			bottom_tick_events200 = deque(cursor.fetchall())
 			stdDevNum = 0.0
@@ -74,15 +80,16 @@ def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
 			StdDev.value = (stdDevNum/(len(bottom_tick_events50)))**(1/2)
 			lenSMA50= len(bottom_tick_events50) #see how many events that took for each
 			lenSMA200= len(bottom_tick_events200)
+			lenSMA1  = len(bottom_tick_events)
 
-			cursor.execute("Select last,date from ticker WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
+			cursor.execute("Select last,date from ticker WHERE date >= ( CURDATE() - INTERVAL 26 DAY ) ORDER BY date ASC;") #Pull the last 26 days from DB
 			bottom_tick_eventsEMA26 = deque(cursor.fetchall())
 			
-			cursor.execute("Select last,date from ticker WHERE date >= ( CURDATE() - INTERVAL 200 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
+			cursor.execute("Select last,date from ticker WHERE date >= ( CURDATE() - INTERVAL 12 DAY ) ORDER BY date ASC;") #Pull the last 12 days from DB
 			bottom_tick_eventsEMA12 = deque(cursor.fetchall())
 			
-			#cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 9 DAY ) ORDER BY date ASC;") #Pull the last 200 days from DB
-			#bottom_tick_eventsEMA9 = deque(cursor.fetchall())
+			cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 9 DAY ) ORDER BY date ASC;") #Pull the last 9 days from DB
+			bottom_tick_eventsEMA9 = deque(cursor.fetchall())
 			
 			EMA26 = bottom_tick_eventsEMA26.popleft()[0]
 			EMA12 = bottom_tick_eventsEMA12.popleft()[0]
@@ -105,10 +112,10 @@ def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
 				EMA9.value = (alpha9 * i.MACDVal) + (1 - alpha9) * EMA9.value
 				i.EMA9 = EMA9.value
 
-			MACD.value = macdlist[-1].MACDVal
+			MACD.value = macdlist[-1].MACDVal # most recent macd, makes sense
 			for i in macdlist:
-				cursor.execute("Select macd from macd WHERE time = '" + str(i.time) +"'" ) #Check my logic on this
-				if len(cursor.fetchall()) == 0: #Get the last 100 events. We cycle in 100 for the SMA math, and cycle out 1 event each iteration
+				cursor.execute("Select macd from macd WHERE time = '" + str(i.time) +"'" ) # grab the macd value in our db for this time
+				if len(cursor.fetchall()) == 0: # if there isn't a value in our database, commit one. This makes us skip duplicates?
 					cursor.execute(i.insert_sql())
 			connection.commit()
 
@@ -132,6 +139,7 @@ def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
 				oldAve = SMA50.value
 				SMA50.value += (float(query["last"]) - bottom_tick_events50.popleft()[0]) / lenSMA50 #SMA that shit
 				SMA200.value += (float(query["last"]) - bottom_tick_events200.popleft()[0]) / lenSMA200
+				SMA1.value += (float(query["last"]) - bottom_tick_events.popleft()[0]) / lenSMA1
 
 				EMA12 = (alpha12 * float(query["last"])) + (1 - alpha12) * EMA12
 				EMA26 = (alpha26 * float(query["last"])) + (1 - alpha26) * EMA26
@@ -150,6 +158,9 @@ def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
 					cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 50 DAY ) ORDER BY date ASC LIMIT 100")
 					bottom_tick_events50 = deque(cursor.fetchall())
 
+					cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 2 DAY ) ORDER BY date ASC LIMIT 100")
+					bottom_tick_events = deque(cursor.fetchall())
+
 					print("Flushing to database") #write it all to sql
 					for i in top_tick_events:
 						cursor.execute(i.insert_sql());
@@ -163,7 +174,72 @@ def SMA(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD):
 	finally:
 		connection.close()
 
-#This tracks bids and asks to SQL. I kinda hate it
+#This function takes our indicators and puts thought into them
+#I want to structure this as a series of watchdog functions
+def TradeBrain(SMA1, SMA50, SMA200, StdDev, EMA9, MACD):
+	print("Thinking about what to trade.")
+	wcondition1 = False
+	wcondition2 = False
+	wcondition3 = False
+	mcondition1 = False
+	mcondition2 = False
+	mcondition3 = False
+	firstHumpW = 0.0
+	indicator = 0.0
+	wasPositive = False
+	wasNegative = False
+	while True:
+	#section 1 is a W pattern
+		if SMA1.value < SMA50.value - (2*StdDev.value):
+			wcondition1 = True
+		if SMA1.value > SMA50.value:
+			firstHumpW = SMA1.value
+			wcondition2 = wcondition1
+		#check for false signals
+		if wcondition1 and wcondition2 and wcondition3 and SMA1.value > SMA50.value + (2*StdDev.value):
+			wcondition1 = False
+			wcondition2 = False
+			wcondition3 = False
+			firstHumpW = 0.0
+		if SMA1.value < SMA50.value and SMA1.value > SMA50.value - (2*StdDev.value) and SMA1.value < firstHumpW:
+			wcondition3 = wcondition2
+			wcondition1 = wcondition2
+		if wcondition3 and SMA1.value > SMA50.value + (2*StdDev.value):
+			wcondition1 = False
+			wcondition2 = False
+			wcondition3 = False
+			firstHumpW = 0.0
+			print("W pattern recommends buying now at roughly ", SMA1.value)
+	#section 2 is an M pattern
+		if SMA1.value > SMA50.value + (2*StdDev.value):
+			mcondition1 = True
+		if SMA1.value < SMA50.value:
+			mcondition2 = mcondition1
+		#check for false signals
+		if mcondition1 and mcondition2 and mcondition3 and SMA1.value < SMA50.value - (2*StdDev.value):
+			mcondition1 = False
+			mcondition2 = False
+			mcondition3 = False
+		if SMA1.value > SMA50.value and SMA1.value < SMA50.value + (2*StdDev.value):
+			mcondition3 = mcondition2
+			mcondition1 = mcondition2
+		if mcondition3 and SMA1.value < SMA50.value - (2*StdDev.value):
+			mcondition1 = False
+			mcondition2 = False
+			mcondition3 = False
+			print("M pattern recommends selling now at roughly ", SMA1.value)
+	#section 3 is an EMA move
+	#if EMA is
+		wasPositive = indicator > 0
+		wasNegative = indicator < 0
+		indicator = MACD.value - EMA9.value
+		if math.isclose(float(indicator), float(0.0), abs_tol = .1):
+			if wasNegative:
+				print("EMA pattern recommends buying now at roughly ", SMA1.value)
+			elif wasPositive:
+				print("EMA pattern recommends selling now at roughly ", SMA1.value)
+
+#This tracks bids and asks to SQL. I kinda hate it. But we gotta have it!
 def TrackandInsertOpenOrders():
 	p = api.poloniex("A", "B")
 	currency = {}
@@ -266,9 +342,10 @@ def getOpenBook(OpenOrders, e):
 		time.sleep(0.5)
 
 #init some shit
-def init(O, S5, S2, SD):
-	global OrdersLock, SMA50Lock, SMA200Lock
+def init(O, S1, S5, S2, SD):
+	global OrdersLock, SMA1Lock, SMA50Lock, SMA200Lock
 	OrdersLock = O
+	SMA1Lock = S1
 	SMA50Lock = S5
 	SMA200Lock = S2
 	StdDevLock = SD
@@ -279,11 +356,13 @@ def main():
 	waitEvent = multiprocessing.Event()
 
 	OrdersLock = multiprocessing.Lock()
+	SMA1Lock = multiprocessing.Lock()
 	SMA50Lock = multiprocessing.Lock()
 	SMA200Lock = multiprocessing.Lock()
 	StdDevLock = multiprocessing.Lock()
-	pool = multiprocessing.Pool(initializer=init, initargs=(OrdersLock, SMA50Lock, SMA200Lock, StdDevLock)) #Run the init function
+	pool = multiprocessing.Pool(initializer=init, initargs=(OrdersLock, SMA1Lock, SMA50Lock, SMA200Lock, StdDevLock)) #Run the init function
 	print("Setting up")
+	SMA1 = manager.Value('d', 0.0)
 	SMA50 = manager.Value('d', 0.0)
 	SMA200 = manager.Value('d', 0.0)
 	MACD = manager.Value('d', 0.0)
@@ -293,8 +372,10 @@ def main():
 	print("Spawning processes")
 	OpenbookProcess = multiprocessing.Process(target=getOpenBook, args=(OpenOrders, e)) #Spawn some new processes
 	OpenbookProcess.start()
-	SMAProcess = multiprocessing.Process(target=SMA, args=(waitEvent, SMA50, SMA200, StdDev, EMA9, MACD))
+	SMAProcess = multiprocessing.Process(target=SMA, args=(waitEvent, SMA1, SMA50, SMA200, StdDev, EMA9, MACD))
 	SMAProcess.start()
+	TradeProcess = multiprocessing.Process(target=TradeBrain, args=(SMA1, SMA50, SMA200, StdDev, EMA9, MACD))
+	TradeProcess.start()
 	waitEvent.wait() #Wait until a SMA is finished setting up
 
 	print("Looping")
@@ -307,6 +388,7 @@ def main():
 			if SMA50.value < float(i[0]):
 				pass
 				#print(i[0], ": bid detected greater than 50 day average: ", SMA50.value)
+		print("SMA1", SMA1.value)
 		print("SMA50", SMA50.value)
 		print("SMA200", SMA200.value)
 		print("MACD", MACD.value)
