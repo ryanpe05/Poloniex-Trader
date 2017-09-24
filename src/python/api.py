@@ -10,7 +10,7 @@ def createTimeStamp(datestr, format="%Y-%m-%d %H:%M:%S"):
 class poloniex:
     def __init__(self, APIKey, Secret):
         self.APIKey = APIKey
-        self.Secret = Secret
+        self.Secret = Secret.encode('utf8')
 
     def post_process(self, before):
         after = before
@@ -39,8 +39,8 @@ class poloniex:
         else:
             req['command'] = command
             req['nonce'] = int(time.time()*1000)
-            post_data = urllib.parse.urlencode(req)
-
+            post_data = urllib.parse.urlencode(req).encode('utf8')
+    
             sign = hmac.new(self.Secret, post_data, hashlib.sha512).hexdigest()
             headers = {
                 'Sign': sign,
@@ -48,7 +48,7 @@ class poloniex:
             }
 
             ret = urllib.request.urlopen(urllib.request.Request('https://poloniex.com/tradingApi', post_data, headers))
-            jsonRet = json.loads(ret.read())
+            jsonRet = json.loads(ret.read().decode('utf-8'))
             return self.post_process(jsonRet)
 
 

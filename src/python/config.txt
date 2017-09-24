@@ -1,0 +1,5 @@
+[user]
+API = 
+Secret = 
+currency = 
+aggression = 0.

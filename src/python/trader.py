@@ -398,6 +398,7 @@ def init(O, S1, S5, S2, SD):
 	StdDevLock = SD
 
 def main():
+	print("Looking for config file, \"config.txt\"")
 	manager = multiprocessing.Manager() #This sets up a server that controls processing events
 	e = multiprocessing.Event()
 	waitEvent = multiprocessing.Event()
