@@ -31,7 +31,7 @@ StdDevLock = multiprocessing.Lock() # why are these here and in main?
 # Loops forever
 # Both parameters must be type manager.Value('d', 0.0)
 # """
-def SMA(account, waitEvent, StartThinking, SMA1, SMA50, SMA200, StdDev, EMA9, MACD):
+def SMA(account, waitEvent, StartThinking, ticker, SMA1, SMA50, SMA200, StdDev, EMA9, MACD):
 	waitEvent.clear()
 	StartThinking.clear()
 	top_tick_events = []
@@ -60,6 +60,13 @@ def SMA(account, waitEvent, StartThinking, SMA1, SMA50, SMA200, StdDev, EMA9, MA
 			# quit()
 			# """
 			print("Pulling old data from DB and calculating averages")
+			ts = time.time()
+			timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S') #Convert to date-time
+			query  = account.getAPI().api_query("returnTicker") 
+			query = query[currency["currencyPair"]] #We only care about the current trading value, "USDT_ETH"
+			latest = trade_class.ticker(query, timestamp, currency["currencyPair"]) #Add it to a list of the past ticker events
+			cursor.execute(latest.insert_sql())
+			connection.commit()
 			cursor.execute("Select last from ticker  WHERE date >= ( CURDATE() - INTERVAL 2 DAY ) ORDER BY date ASC;") #Pull the last day from DB
 			bottom_tick_events = deque(cursor.fetchall())
 			for i in bottom_tick_events:
@@ -138,15 +145,17 @@ def SMA(account, waitEvent, StartThinking, SMA1, SMA50, SMA200, StdDev, EMA9, MA
 					print("****************************************")
 					print("*******A stupid exception occured*******")
 					print("****************************************")
+					sleep(0.25) #so we don't hit poloniex too much 
 					account.connect()
 					continue
 
 				query = query[currency["currencyPair"]] #We only care about the current trading value, "USDT_ETH"
 				top_tick_events += [trade_class.ticker(query, timestamp, currency["currencyPair"])] #Add it to a list of the past ticker events
+				ticker.value = float(query["last"])
 				oldAve = SMA50.value
 				SMA50.value += (float(query["last"]) - bottom_tick_events50.popleft()[0]) / lenSMA50 #SMA that shit
 				SMA200.value += (float(query["last"]) - bottom_tick_events200.popleft()[0]) / lenSMA200
-				SMA1.value += (float(query["last"]) - bottom_tick_events.popleft()[0]) / lenSMA1
+				#SMA1.value += (float(query["last"]) - bottom_tick_events.popleft()[0]) / lenSMA1
 
 				EMA12 = (alpha12 * float(query["last"])) + (1 - alpha12) * EMA12
 				EMA26 = (alpha26 * float(query["last"])) + (1 - alpha26) * EMA26
@@ -170,7 +179,7 @@ def SMA(account, waitEvent, StartThinking, SMA1, SMA50, SMA200, StdDev, EMA9, MA
 					cursor.execute("Select last from ticker WHERE date >= ( CURDATE() - INTERVAL 2 DAY ) ORDER BY date ASC LIMIT 100")
 					bottom_tick_events = deque(cursor.fetchall())
 
-					print("Flushing to database") #write it all to sql
+					print("flushhing to database") #write it all to sql
 					for i in top_tick_events:
 						cursor.execute(i.insert_sql());
 					for i in macdlist:
@@ -186,7 +195,7 @@ def SMA(account, waitEvent, StartThinking, SMA1, SMA50, SMA200, StdDev, EMA9, MA
 
 #This function takes our indicators and puts thought into them
 #I want to structure this as a series of watchdog functions
-def TradeBrain(StartTrading, StartThinking, SMA1, SMA50, SMA200, StdDev, EMA9, MACD, buys, sells):
+def TradeBrain(StartTrading, StartThinking, ticker, SMA1, SMA50, SMA200, StdDev, EMA9, MACD, buys, sells):
 	print("Thinking about what to trade.")
 	wcondition1 = False
 	wcondition2 = False
@@ -223,7 +232,7 @@ def TradeBrain(StartTrading, StartThinking, SMA1, SMA50, SMA200, StdDev, EMA9, M
 			wcondition2 = False
 			wcondition3 = False
 			firstHumpW = 0.0
-			buys.append((SMA1.value, "W Pattern ")) #W Pattern
+			buys.append((ticker.value, "W Pattern ")) #W Pattern
 	#section 2 is an M pattern
 		if SMA1.value > SMA50.value + (2*StdDev.value):
 			mcondition1 = True
@@ -241,7 +250,7 @@ def TradeBrain(StartTrading, StartThinking, SMA1, SMA50, SMA200, StdDev, EMA9, M
 			mcondition1 = False
 			mcondition2 = False
 			mcondition3 = False
-			sells.append((SMA1.value, "M Pattern ")) #M Pattern
+			sells.append((ticker.value, "M Pattern ")) #M Pattern
 	#section 3 is an EMA move
 	#if EMA is
 		wasPositive = indicator > 0
@@ -249,17 +258,17 @@ def TradeBrain(StartTrading, StartThinking, SMA1, SMA50, SMA200, StdDev, EMA9, M
 		indicator = MACD.value - EMA9.value
 		if math.isclose(float(indicator), float(0.0), abs_tol = .1):
 			if wasNegative and indicator > 0:
-				buys.append((SMA1.value, "MACD "))
+				buys.append((ticker.value, "MACDS "))
 			elif wasPositive and indicator < 0:
-				sells.append((SMA1.value, "MACD "))
+				sells.append((ticker.value, "MACDB "))
 		StartTrading.set()
 		StartThinking.clear()
 
-def TradeHands(account, StartThinking, buys, sells):
+def TradeHands(account, StartTrading, buys, sells):
 	aggression = account.getAggression()
 	print("aggression ", aggression)
 	while True:
-		StartThinking.wait()
+		StartTrading.wait()
 		balances = account.getBalances()
 		buyable = float(balances[account.getCurrency()["currencyPair"].split("_")[0]])
 		sellable = float(balances[account.getCurrency()["currencyPair"].split("_")[1]])
@@ -284,7 +293,7 @@ def TradeHands(account, StartThinking, buys, sells):
 			for i in account.updateOrders():
 				cursor.execute(i)
 			connection.commit()
-
+		StartTrading.clear()
 
 
 #This tracks bids and asks to SQL. I kinda hate it. But we gotta have it!
@@ -402,7 +411,7 @@ def main():
 	manager = multiprocessing.Manager() #This sets up a server that controls processing events
 	e = multiprocessing.Event()
 	waitEvent = multiprocessing.Event()
-	Thinking = multiprocessing.Event()
+	StartTrading = multiprocessing.Event()
 	StartThinking = multiprocessing.Event()
 
 	OrdersLock = multiprocessing.Lock()
@@ -418,6 +427,7 @@ def main():
 	MACD = manager.Value('d', 0.0)
 	EMA9 = manager.Value('d', 0.0)
 	StdDev = manager.Value('d', 0.0)
+	ticker = manager.Value('d', 0.0)
 	OpenOrders = manager.dict()
 	buys = manager.list([])
 	sells = manager.list([])
@@ -430,11 +440,11 @@ def main():
 	print("Spawning processes")
 	#OpenbookProcess = multiprocessing.Process(target=getOpenBook, args=(OpenOrders, e)) #Spawn some new processes
 	#OpenbookProcess.start()
-	SMAProcess = multiprocessing.Process(target=SMA, args=(account, waitEvent, StartThinking, SMA1, SMA50, SMA200, StdDev, EMA9, MACD))
+	SMAProcess = multiprocessing.Process(target=SMA, args=(account, waitEvent, StartThinking, ticker, SMA1, SMA50, SMA200, StdDev, EMA9, MACD))
 	SMAProcess.start()
-	TradeProcess = multiprocessing.Process(target=TradeBrain, args=(Thinking, StartThinking, SMA1, SMA50, SMA200, StdDev, EMA9, MACD, buys, sells))
+	TradeProcess = multiprocessing.Process(target=TradeBrain, args=(StartTrading, StartThinking, ticker, SMA1, SMA50, SMA200, StdDev, EMA9, MACD, buys, sells))
 	TradeProcess.start()
-	TradeExecute = multiprocessing.Process(target=TradeHands, args=(account, StartThinking, buys, sells))
+	TradeExecute = multiprocessing.Process(target=TradeHands, args=(account, StartTrading, buys, sells))
 	TradeExecute.start()
 	waitEvent.wait() #Wait until a SMA is finished setting up
 
@@ -442,6 +452,7 @@ def main():
 	while True:
 		print("Main loop\n")
 		time.sleep(5)
+		StartThinking.wait()
 				#print(i[0], ": bid detected greater than 50 day average: ", SMA50.value)
 		print("SMA1", SMA1.value)
 		print("SMA50", SMA50.value)

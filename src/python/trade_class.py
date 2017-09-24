@@ -36,7 +36,10 @@ class account:
 		return self.currency
 
 	def updateBalances(self):
-		self.balances = self.poloniex.returnBalances()
+		try:
+			self.balances = self.poloniex.returnBalances()
+		except:
+			print("Unsuccesful at updating balances,", self.balances)
 		relevantBalances = dict(self.balances)
 		relevant = self.currency["currencyPair"].split("_")
 		for key, val in relevantBalances.items():
@@ -53,7 +56,11 @@ class account:
 		print("BUYYINNG")
 		ts = time.time()
 		timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-		id = self.poloniex.buy(self.currency['currencyPair'], rate, amount)
+		try:
+			id = self.poloniex.buy(self.currency['currencyPair'], rate, amount)
+			print("Problem buying: ", id)
+		except:
+			return
 		if "orderNumber" not in id:
 			print("Unsuccesful buy")
 			print(id)
@@ -66,7 +73,11 @@ class account:
 		print("SELLING")
 		ts = time.time()
 		timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-		id = self.poloniex.sell(self.currency['currencyPair'], rate, amount)
+		try:
+			id = self.poloniex.sell(self.currency['currencyPair'], rate, amount)
+			print("Problem selling: ", id)
+		except:
+			return
 		if "orderNumber" not in id:
 			print("Unsuccesful sell")
 			print(id)

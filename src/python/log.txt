@@ -1,0 +1,9 @@
+Looking for config file, "config.txt"
+Setting up
+{'ETH': '0.00000627', 'USDT': '4.17375747'}
+Spawning processes
+Pulling old data from DB and calculating averages
+Done with SMA 200 and 50
+Calculating EMAs
+Thinking about what to trade.
+aggression  0.1
