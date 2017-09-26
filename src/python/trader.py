@@ -208,10 +208,10 @@ def TradeBrain(StartTrading, StartThinking, ticker, SMA1, SMA50, SMA200, StdDev,
 	wasPositive = False
 	wasNegative = False
 	while True:
-		StartThinking.wait() #Wait for the next set of data to be loaded into SMA
 		StartTrading.clear()
 		buys.value = []
 		sells.value = []
+		StartThinking.wait() #Wait for the next set of data to be loaded into SMA
 		#section 1 is a W pattern
 		if SMA1.value < SMA50.value - (2*StdDev.value):
 			wcondition1 = True
